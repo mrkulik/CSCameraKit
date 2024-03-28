@@ -8,99 +8,8 @@ import Photos
 import PhotosUI
 import UIKit
 
-public enum CameraState {
-    case ready, accessDenied, noDeviceFound, notDetermined
-}
-
-public enum CameraDevice {
-    case front, back
-}
-
-public enum CameraFlashMode: Int {
-    case off, on, auto
-}
-
-public enum CameraOutputMode {
-    case stillImage, videoWithMic, videoOnly
-}
-
-public enum CaptureResult {
-    case success(content: CaptureContent)
-    case failure(Error)
-    
-    init(_ image: UIImage) {
-        self = .success(content: .image(image))
-    }
-    
-    init(_ data: Data) {
-        self = .success(content: .imageData(data))
-    }
-    
-    init(_ asset: PHAsset) {
-        self = .success(content: .asset(asset))
-    }
-    
-    var imageData: Data? {
-        if case let .success(content) = self {
-            return content.asData
-        } else {
-            return nil
-        }
-    }
-}
-
-public enum CaptureContent {
-    case imageData(Data)
-    case image(UIImage)
-    case asset(PHAsset)
-}
-
-extension CaptureContent {
-    public var asImage: UIImage? {
-        switch self {
-            case let .image(image): return image
-            case let .imageData(data): return UIImage(data: data)
-            case let .asset(asset):
-                if let data = getImageData(fromAsset: asset) {
-                    return UIImage(data: data)
-                } else {
-                    return nil
-            }
-        }
-    }
-    
-    public var asData: Data? {
-        switch self {
-            case let .image(image): return image.jpegData(compressionQuality: 1.0)
-            case let .imageData(data): return data
-            case let .asset(asset): return getImageData(fromAsset: asset)
-        }
-    }
-    
-    private func getImageData(fromAsset asset: PHAsset) -> Data? {
-        var imageData: Data?
-        let manager = PHImageManager.default()
-        let options = PHImageRequestOptions()
-        options.version = .original
-        options.isSynchronous = true
-        manager.requestImageData(for: asset, options: options) { data, _, _, _ in
-            
-            imageData = data
-        }
-        return imageData
-    }
-}
-
-public enum CaptureError: Error {
-    case noImageData
-    case invalidImageData
-    case noVideoConnection
-    case noSampleBuffer
-    case assetNotSaved
-}
-
 /// Class for handling iDevices custom camera usage
-open class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate, UIGestureRecognizerDelegate {
+open class CSCameraService: NSObject, AVCaptureFileOutputRecordingDelegate, UIGestureRecognizerDelegate {
     // MARK: - Public properties
     
     // Property for custom image album name.
@@ -914,7 +823,7 @@ open class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate, UIGest
     
     fileprivate func attachZoom(_ view: UIView) {
         DispatchQueue.main.async {
-            self.zoomGesture.addTarget(self, action: #selector(CameraManager._zoomStart(_:)))
+            self.zoomGesture.addTarget(self, action: #selector(CSCameraService._zoomStart(_:)))
             view.addGestureRecognizer(self.zoomGesture)
             self.zoomGesture.delegate = self
         }
@@ -980,7 +889,7 @@ open class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate, UIGest
     
     fileprivate func attachFocus(_ view: UIView) {
         DispatchQueue.main.async {
-            self.focusGesture.addTarget(self, action: #selector(CameraManager._focusStart(_:)))
+            self.focusGesture.addTarget(self, action: #selector(CSCameraService._focusStart(_:)))
             view.addGestureRecognizer(self.focusGesture)
             self.focusGesture.delegate = self
         }
@@ -990,7 +899,7 @@ open class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate, UIGest
     
     fileprivate func attachExposure(_ view: UIView) {
         DispatchQueue.main.async {
-            self.exposureGesture.addTarget(self, action: #selector(CameraManager._exposureStart(_:)))
+            self.exposureGesture.addTarget(self, action: #selector(CSCameraService._exposureStart(_:)))
             view.addGestureRecognizer(self.exposureGesture)
             self.exposureGesture.delegate = self
         }
@@ -1645,7 +1554,7 @@ open class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate, UIGest
             let validPreviewLayer = previewLayer {
             var tempView = UIView()
             
-            if CameraManager._blurSupported() {
+            if CSCameraService._blurSupported() {
                 let blurEffect = UIBlurEffect(style: .light)
                 tempView = UIVisualEffectView(effect: blurEffect)
                 tempView.frame = validEmbeddingView.bounds
@@ -1941,175 +1850,7 @@ open class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate, UIGest
     }
 }
 
-private extension AVCaptureDevice {
-    static var videoDevices: [AVCaptureDevice] {
-        return AVCaptureDevice.devices(for: AVMediaType.video)
-    }
-}
-
-extension PHPhotoLibrary {
-    // MARK: - Public
-    
-    // finds or creates an album
-    
-    func getAlbum(name: String, completion: @escaping (PHAssetCollection) -> Void) {
-        if let album = findAlbum(name: name) {
-            completion(album)
-        } else {
-            createAlbum(name: name, completion: completion)
-        }
-    }
-    
-    func save(imageAtURL: URL, albumName: String?, date: Date = Date(), location: CLLocation? = nil, completion: ((PHAsset?) -> Void)? = nil) {
-        func save() {
-            if let albumName = albumName {
-                getAlbum(name: albumName) { album in
-                    self.saveImage(imageAtURL: imageAtURL, album: album, date: date, location: location, completion: completion)
-                }
-            } else {
-                saveImage(imageAtURL: imageAtURL, album: nil, date: date, location: location, completion: completion)
-            }
-        }
-        
-        if PHPhotoLibrary.authorizationStatus() == .authorized {
-            save()
-        } else {
-            PHPhotoLibrary.requestAuthorization { status in
-                if status == .authorized {
-                    save()
-                }
-            }
-        }
-    }
-    
-    func save(videoAtURL: URL, albumName: String?, date: Date = Date(), location: CLLocation? = nil, completion: ((PHAsset?) -> Void)? = nil) {
-        func save() {
-            if let albumName = albumName {
-                getAlbum(name: albumName) { album in
-                    self.saveVideo(videoAtURL: videoAtURL, album: album, date: date, location: location, completion: completion)
-                }
-            } else {
-                saveVideo(videoAtURL: videoAtURL, album: nil, date: date, location: location, completion: completion)
-            }
-        }
-        
-        if PHPhotoLibrary.authorizationStatus() == .authorized {
-            save()
-        } else {
-            PHPhotoLibrary.requestAuthorization { status in
-                if status == .authorized {
-                    save()
-                }
-            }
-        }
-    }
-    
-    // MARK: - Private
-    
-    fileprivate func findAlbum(name: String) -> PHAssetCollection? {
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.predicate = NSPredicate(format: "title = %@", name)
-        let fetchResult: PHFetchResult = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: fetchOptions)
-        guard let photoAlbum = fetchResult.firstObject else {
-            return nil
-        }
-        return photoAlbum
-    }
-    
-    fileprivate func createAlbum(name: String, completion: @escaping (PHAssetCollection) -> Void) {
-        var placeholder: PHObjectPlaceholder?
-        
-        performChanges({
-            let createAlbumRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
-            placeholder = createAlbumRequest.placeholderForCreatedAssetCollection
-        }, completionHandler: { _, _ in
-            let fetchResult = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [placeholder!.localIdentifier], options: nil)
-            completion(fetchResult.firstObject!)
-        })
-    }
-    
-    fileprivate func saveImage(imageAtURL: URL, album: PHAssetCollection?, date: Date = Date(), location: CLLocation? = nil, completion: ((PHAsset?) -> Void)? = nil) {
-        var placeholder: PHObjectPlaceholder?
-        performChanges({
-            let createAssetRequest = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: imageAtURL)!
-            createAssetRequest.creationDate = date
-            createAssetRequest.location = location
-            if let album = album {
-                guard let albumChangeRequest = PHAssetCollectionChangeRequest(for: album),
-                    let photoPlaceholder = createAssetRequest.placeholderForCreatedAsset else { return }
-                placeholder = photoPlaceholder
-                let fastEnumeration = NSArray(array: [photoPlaceholder] as [PHObjectPlaceholder])
-                albumChangeRequest.addAssets(fastEnumeration)
-            }
-            
-        }, completionHandler: { success, _ in
-            guard let placeholder = placeholder else {
-                return
-            }
-            if success {
-                let assets: PHFetchResult<PHAsset> = PHAsset.fetchAssets(withLocalIdentifiers: [placeholder.localIdentifier], options: nil)
-                let asset: PHAsset? = assets.firstObject
-                completion?(asset)
-            }
-        })
-    }
-    
-    fileprivate func saveVideo(videoAtURL: URL, album: PHAssetCollection?, date: Date = Date(), location: CLLocation? = nil, completion: ((PHAsset?) -> Void)? = nil) {
-        var placeholder: PHObjectPlaceholder?
-        performChanges({
-            let createAssetRequest = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoAtURL)!
-            createAssetRequest.creationDate = date
-            createAssetRequest.location = location
-            if let album = album {
-                guard let albumChangeRequest = PHAssetCollectionChangeRequest(for: album),
-                    let photoPlaceholder = createAssetRequest.placeholderForCreatedAsset else { return }
-                placeholder = photoPlaceholder
-                let fastEnumeration = NSArray(array: [photoPlaceholder] as [PHObjectPlaceholder])
-                albumChangeRequest.addAssets(fastEnumeration)
-            }
-            
-        }, completionHandler: { success, _ in
-            guard let placeholder = placeholder else {
-                completion?(nil)
-                return
-            }
-            if success {
-                let assets: PHFetchResult<PHAsset> = PHAsset.fetchAssets(withLocalIdentifiers: [placeholder.localIdentifier], options: nil)
-                let asset: PHAsset? = assets.firstObject
-                completion?(asset)
-            } else {
-                completion?(nil)
-            }
-        })
-    }
-    
-    fileprivate func saveImage(image: UIImage, album: PHAssetCollection, completion: ((PHAsset?) -> Void)? = nil) {
-        var placeholder: PHObjectPlaceholder?
-        performChanges({
-            let createAssetRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
-            createAssetRequest.creationDate = Date()
-            guard let albumChangeRequest = PHAssetCollectionChangeRequest(for: album),
-                let photoPlaceholder = createAssetRequest.placeholderForCreatedAsset else { return }
-            placeholder = photoPlaceholder
-            let fastEnumeration = NSArray(array: [photoPlaceholder] as [PHObjectPlaceholder])
-            albumChangeRequest.addAssets(fastEnumeration)
-        }, completionHandler: { success, _ in
-            guard let placeholder = placeholder else {
-                completion?(nil)
-                return
-            }
-            if success {
-                let assets: PHFetchResult<PHAsset> = PHAsset.fetchAssets(withLocalIdentifiers: [placeholder.localIdentifier], options: nil)
-                let asset: PHAsset? = assets.firstObject
-                completion?(asset)
-            } else {
-                completion?(nil)
-            }
-        })
-    }
-}
-
-extension CameraManager: AVCaptureMetadataOutputObjectsDelegate {
+extension CSCameraService: AVCaptureMetadataOutputObjectsDelegate {
     /**
      Called when a QR code is detected.
      */
