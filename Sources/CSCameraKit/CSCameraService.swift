@@ -278,8 +278,6 @@ open class CSCameraService: NSObject, AVCaptureFileOutputRecordingDelegate, UIGe
     /// Real device orientation from DeviceMotion
     fileprivate var deviceOrientation: UIDeviceOrientation = .portrait
     
-    // MARK: - CameraManager
-    
     /**
      Inits a capture session and adds a preview layer to the given view. Preview layer bounds will automaticaly be set to match given view. Default session is initialized with still image output.
      
@@ -1130,8 +1128,6 @@ open class CSCameraService: NSObject, AVCaptureFileOutputRecordingDelegate, UIGe
             }
         }
     }
-    
-    // MARK: - CameraManager()
     
     fileprivate func _executeVideoCompletionWithURL(_ url: URL?, error: NSError?) {
         if let validCompletion = videoCompletion {
