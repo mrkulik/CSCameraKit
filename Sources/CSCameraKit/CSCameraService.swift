@@ -219,7 +219,7 @@ open class CSCameraService: NSObject, AVCaptureFileOutputRecordingDelegate, UIGe
         }
     }
     
-    // Property to get the stabilization mode currently active
+    /// Property to get the stabilization mode currently active
     open var activeVideoStabilisationMode: AVCaptureVideoStabilizationMode {
         if let movieOutput = movieOutput {
             for connection in movieOutput.connections {
@@ -235,6 +235,9 @@ open class CSCameraService: NSObject, AVCaptureFileOutputRecordingDelegate, UIGe
         return .off
     }
     
+    /// Property to setup initial device type
+    open var initialDeviceType: AVCaptureDevice.DeviceType = .builtInWideAngleCamera
+    
     // MARK: - Private properties
     
     fileprivate var locationManager: CameraLocationManager?
@@ -249,9 +252,31 @@ open class CSCameraService: NSObject, AVCaptureFileOutputRecordingDelegate, UIGe
     }()
     
     fileprivate lazy var backCameraDevice: AVCaptureDevice? = {
-        AVCaptureDevice.videoDevices.filter { $0.position == .back }.first
-    }()
+        switch initialDeviceType {
+        case .builtInUltraWideCamera:
+            return findAvailableCamera(types: [.builtInUltraWideCamera, .builtInTripleCamera, .builtInDualCamera, .builtInWideAngleCamera])
+        case .builtInTripleCamera:
+            return findAvailableCamera(types: [.builtInTripleCamera, .builtInWideAngleCamera])
+        case .builtInDualCamera:
+            return findAvailableCamera(types: [.builtInDualCamera, .builtInWideAngleCamera])
+        case .builtInDualWideCamera:
+            return findAvailableCamera(types: [.builtInDualWideCamera, .builtInWideAngleCamera])
+        default:
+            return AVCaptureDevice.videoDevices.filter { $0.position == .back }.first
+        }
+        
+        func findAvailableCamera(types: [AVCaptureDevice.DeviceType]) -> AVCaptureDevice? {
+            for type in types {
+                if let device = AVCaptureDevice.default(type, for: .video, position: .back) {
+                    return device
+                }
+            }
+            return AVCaptureDevice.videoDevices.filter { $0.position == .back }.first
+        }
     
+        return AVCaptureDevice.videoDevices.filter { $0.position == .back }.first
+    }()
+
     fileprivate lazy var mic: AVCaptureDevice? = {
         AVCaptureDevice.default(for: AVMediaType.audio)
     }()
